@@ -3,10 +3,13 @@
 import io
 from dataclasses import dataclass
 
+import altair as alt
+import pandas as pd
 import streamlit as st
 
 SOURCE_URL = "https://www.isu.edu/pa/admission/admission-process/file-score/"
 PREREQ_URL = "https://www.isu.edu/pa/admission/admission-requirements/"
+STATS_URL = "https://www.isu.edu/pa/admission/admission-statistics/"
 
 GRADE_POINTS = {
     "A": 4.0,
@@ -49,6 +52,50 @@ EXPERIENCE_RULES = {
     "Non-healthcare employment": {"threshold": 1000, "points": 0.025},
     "Leadership": {"threshold": 150, "points": 0.025},
 }
+
+CLASS_YEAR_STATS = {
+    2024: {
+        "threshold": 4.825,
+        "avg_file_score": 5.07,
+        "avg_prereq_gpa": 3.88,
+        "avg_science_gpa": 3.51,
+        "avg_gre_verbal_pct": 67,
+        "avg_gre_quant_pct": 46,
+    },
+    2025: {
+        "threshold": 4.70,
+        "avg_file_score": 5.04,
+        "avg_prereq_gpa": 3.90,
+        "avg_science_gpa": 3.61,
+        "avg_gre_verbal_pct": 64,
+        "avg_gre_quant_pct": 42,
+    },
+    2026: {
+        "threshold": 4.64,
+        "avg_file_score": 5.00,
+        "avg_prereq_gpa": 3.85,
+        "avg_science_gpa": 3.59,
+        "avg_gre_verbal_pct": 58,
+        "avg_gre_quant_pct": 38,
+    },
+    2027: {
+        "threshold": 4.60,
+        "avg_file_score": 4.95,
+        "avg_prereq_gpa": 3.86,
+        "avg_science_gpa": 3.54,
+        "avg_gre_verbal_pct": 57,
+        "avg_gre_quant_pct": 33,
+    },
+    2028: {
+        "threshold": 4.675,
+        "avg_file_score": 4.95,
+        "avg_prereq_gpa": 3.87,
+        "avg_science_gpa": 3.63,
+        "avg_gre_verbal_pct": 61,
+        "avg_gre_quant_pct": 32,
+    },
+}
+LATEST_CLASS_YEAR = max(CLASS_YEAR_STATS)
 
 MAX_TOTAL_POINTS = (
     MAX_PREREQ_GPA_POINTS
@@ -278,7 +325,66 @@ breakdown_rows = [
     {"Component": name, "Points earned": round(earned, 3), "Max points": max_pts}
     for name, (earned, max_pts) in result["breakdown"].items()
 ]
-st.dataframe(breakdown_rows, hide_index=True, width="stretch")
+st.dataframe(
+    breakdown_rows,
+    hide_index=True,
+    width="stretch",
+    height=35 * (len(breakdown_rows) + 1) + 3,
+)
+
+st.divider()
+st.subheader("7. How You Compare")
+st.caption(
+    "Historical context from ISU's published "
+    f"[admission statistics]({STATS_URL}), for Class of {LATEST_CLASS_YEAR} (the most recent "
+    "cycle shown). This is context only, not a guarantee — actual thresholds vary year to year."
+)
+
+latest_stats = CLASS_YEAR_STATS[LATEST_CLASS_YEAR]
+gap_to_avg = total - latest_stats["avg_file_score"]
+gap_direction = "above" if gap_to_avg >= 0 else "below"
+
+comparison_message = (
+    f"Your estimated score of **{total:.3f}** is **{abs(gap_to_avg):.3f} points {gap_direction}** "
+    f"the average file score of **{latest_stats['avg_file_score']:.2f}** among applicants offered a "
+    f"seat for the Class of {LATEST_CLASS_YEAR}."
+)
+st.info(comparison_message)
+
+stats_rows = [
+    {
+        "Class Year": year,
+        "Interview Threshold": stats["threshold"],
+        "Avg. Seat-Offer Score": stats["avg_file_score"],
+        "Avg. Prereq GPA": stats["avg_prereq_gpa"],
+        "Avg. Science GPA": stats["avg_science_gpa"],
+        "Avg. GRE Verbal %": stats["avg_gre_verbal_pct"],
+        "Avg. GRE Quant %": stats["avg_gre_quant_pct"],
+    }
+    for year, stats in sorted(CLASS_YEAR_STATS.items())
+]
+st.dataframe(stats_rows, hide_index=True, width="stretch")
+
+trend_years = sorted(CLASS_YEAR_STATS)
+trend_df = pd.DataFrame(
+    {
+        "Class Year": [str(y) for y in trend_years],
+        "Interview threshold": [CLASS_YEAR_STATS[y]["threshold"] for y in trend_years],
+        "Avg. seat-offer score": [CLASS_YEAR_STATS[y]["avg_file_score"] for y in trend_years],
+        "Your score": [total] * len(trend_years),
+    }
+)
+trend_long_df = trend_df.melt("Class Year", var_name="Series", value_name="File Score")
+trend_chart = (
+    alt.Chart(trend_long_df)
+    .mark_line(point=True)
+    .encode(
+        x=alt.X("Class Year:N", title="Class Year"),
+        y=alt.Y("File Score:Q", title="File Score", scale=alt.Scale(domain=[4, 6], clamp=True)),
+        color=alt.Color("Series:N", title=""),
+    )
+)
+st.altair_chart(trend_chart, use_container_width=True)
 
 summary_lines = [
     "ISU PA Program File Score Estimate (unofficial)",
